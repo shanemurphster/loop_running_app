@@ -78,11 +78,14 @@ function mulberry32(a: number) {
 }
 
 /**
- * The activity feed. Returns one Activity per (runner, spot) pairing, with the
- * runner's path jittered slightly off the spot's "true" line — exactly the kind
- * of noisy real-world data the clusterer has to collapse back together.
+ * The activity feed. Real Strava/Garmin activities plug in here later.
+ *
+ * Until then it's EMPTY by default, so the deployed app stays free of fake data
+ * — discovery simply finds nothing to promote. Set LOOP_SIMULATE_RUNS=1 (local
+ * only) to replay the simulated feed for testing the pipeline.
  */
 export function getActivityFeed(): Activity[] {
+  if (process.env.LOOP_SIMULATE_RUNS !== "1") return [];
   const activities: Activity[] = [];
   EMERGING_SPOTS.forEach((spot, si) => {
     const { center } = CITY_CENTERS[spot.city];

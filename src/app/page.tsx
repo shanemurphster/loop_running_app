@@ -13,7 +13,7 @@ import type { RouteWithStats } from "@/lib/types";
 type Tab = "trending" | "friends" | "foryou";
 
 export default function HomePage() {
-  const { routes, currentUser, followingIds } = useStore();
+  const { routes, currentUser, followingIds, ready } = useStore();
   const [tab, setTab] = useState<Tab>("trending");
 
   const homeCity = currentUser.city;
@@ -44,13 +44,37 @@ export default function HomePage() {
     );
   }, [tab, sorted, followingIds, homeCity]);
 
-  const topLong = sorted
-    .filter((r) => r.city === "Miami" && r.routeType === "Long Run")
-    .slice(0, 6);
-  const topTempo = sorted
-    .filter((r) => r.city === "Philadelphia" && r.routeType === "Tempo")
+  const topRated = sorted.slice(0, 6);
+  const recentlyAdded = [...routes]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 6);
   const certified = sorted.filter((r) => r.loopCertified).slice(0, 6);
+  const inYourCity = homeCity
+    ? sorted.filter((r) => r.city === homeCity).slice(0, 6)
+    : [];
+
+  if (ready && routes.length === 0) {
+    return (
+      <div>
+        <AppHeader subtitle="Discover your next run" />
+        <div className="h-px w-full bg-loop-line/70" />
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-8 text-center">
+          <p className="text-3xl">🏃</p>
+          <h2 className="text-xl font-bold">No routes yet</h2>
+          <p className="text-sm text-loop-muted">
+            Loop fills up as people add the runs they love. Be the first — draw a
+            route on the map.
+          </p>
+          <Link
+            href="/add"
+            className="mt-2 rounded-xl bg-loop-green px-6 py-3 font-bold text-black"
+          >
+            Add the first route
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -94,22 +118,24 @@ export default function HomePage() {
         )}
       </section>
 
-      <RouteRail
-        title="Top Long Runs"
-        location="Miami"
-        routes={topLong}
-        seeAllHref="/discover?city=Miami&type=Long%20Run"
-      />
-      <RouteRail
-        title="Best Tempo Routes"
-        location="Philadelphia"
-        routes={topTempo}
-        seeAllHref="/discover?city=Philadelphia&type=Tempo"
-      />
+      {inYourCity.length > 0 && (
+        <RouteRail
+          title="Top in your city"
+          location={homeCity}
+          routes={inYourCity}
+          seeAllHref={`/discover?city=${encodeURIComponent(homeCity)}`}
+        />
+      )}
+      <RouteRail title="Top Rated" routes={topRated} seeAllHref="/discover" />
       <RouteRail
         title="Loop Certified"
         routes={certified}
         seeAllHref="/discover?certified=1"
+      />
+      <RouteRail
+        title="Recently Added"
+        routes={recentlyAdded}
+        seeAllHref="/discover"
       />
 
       <div className="px-4 pt-2 text-center">

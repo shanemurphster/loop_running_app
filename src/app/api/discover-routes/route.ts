@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import { CERTIFY_MIN_RUNNERS, discoverableClusters } from "@/lib/discovery";
 import { nameCluster } from "@/lib/aiRoute";
-import type { Route } from "@/lib/types";
+import { createServiceClient } from "@/lib/supabase/service";
+import {
+  feetToMeters,
+  lineToEwkt,
+  milesToMeters,
+  pointToEwkt,
+} from "@/lib/units";
 
 export const runtime = "nodejs";
 
-// Hard cap on naming calls per request. This is the cost backstop: even if the
-// client's dedupe list is empty, a single scan can never make more than this
-// many paid calls. Production will persist promoted clusters in Supabase so a
-// cluster is named exactly once, ever.
+// Cost backstop: a single scan can never make more than this many paid (Haiku)
+// calls, regardless of state.
 const MAX_NEW_PER_SCAN = 3;
 
-interface Body {
-  knownClusterIds?: string[];
-}
-
-export async function POST(req: Request) {
+export async function POST() {
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     return NextResponse.json(
       { error: "ANTHROPIC_API_KEY is not configured on the server." },
@@ -23,56 +23,80 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: Body = {};
-  try {
-    body = await req.json();
-  } catch {
-    /* empty body is fine */
-  }
+  const db = createServiceClient();
 
-  const known = body.knownClusterIds ?? [];
-  // Only clusters past the threshold AND not already turned into routes.
-  const candidates = discoverableClusters(known).slice(0, MAX_NEW_PER_SCAN);
+  // Dedup against the DB so a cluster is ever named exactly once.
+  const { data: knownRows } = await db
+    .from("discovery_clusters")
+    .select("cluster_id");
+  const known = (knownRows ?? []).map((r) => r.cluster_id as string);
 
-  const totalReady = discoverableClusters(known).length;
+  const ready = discoverableClusters(known);
+  const candidates = ready.slice(0, MAX_NEW_PER_SCAN);
 
   if (candidates.length === 0) {
-    return NextResponse.json({ routes: [], totalReady: 0, remaining: 0 });
+    return NextResponse.json({ routes: [], remaining: 0 });
   }
 
-  const nowIso = new Date().toISOString();
-  const routes: Route[] = [];
+  const created: Array<{
+    id: string;
+    name: string;
+    city: string;
+    distanceMi: number;
+    routeType: string;
+    loopCertified: boolean;
+    runCount: number;
+    predictedTags: string[];
+  }> = [];
 
   for (const cluster of candidates) {
     try {
       const meta = await nameCluster(cluster); // the one paid call per route
-      routes.push({
-        id: cluster.clusterId,
-        creatorId: "loop", // community-discovered, not a single user
+      const { data, error } = await db
+        .from("routes")
+        .insert({
+          creator_id: null, // community-discovered
+          name: meta.name,
+          description: meta.description,
+          city: cluster.city,
+          route_type: cluster.routeType,
+          distance_m: milesToMeters(cluster.distanceMi),
+          elevation_m: feetToMeters(cluster.elevationFt),
+          geom: lineToEwkt(cluster.path),
+          start_point: pointToEwkt(cluster.path[0]),
+          source: "discovered",
+          loop_certified: cluster.runnerCount >= CERTIFY_MIN_RUNNERS,
+          run_count: cluster.runnerCount,
+          predicted_tags: meta.predictedTags,
+          cluster_id: cluster.clusterId,
+        })
+        .select("id")
+        .single();
+      if (error || !data) throw new Error(error?.message ?? "insert failed");
+
+      // Record the cluster so it's never named again.
+      await db.from("discovery_clusters").insert({
+        cluster_id: cluster.clusterId,
+        route_id: data.id,
+      });
+
+      created.push({
+        id: data.id as string,
         name: meta.name,
-        description: meta.description,
         city: cluster.city,
-        routeType: cluster.routeType,
         distanceMi: cluster.distanceMi,
-        elevationFt: cluster.elevationFt,
-        path: cluster.path,
-        image:
-          "https://images.unsplash.com/photo-1502904550040-7534597429ae?w=800&q=70",
-        createdAt: nowIso,
+        routeType: cluster.routeType,
         loopCertified: cluster.runnerCount >= CERTIFY_MIN_RUNNERS,
         runCount: cluster.runnerCount,
-        source: "discovered",
         predictedTags: meta.predictedTags,
       });
     } catch (err) {
-      // Skip a cluster that failed to name; don't fail the whole scan.
-      console.error(`Failed to name cluster ${cluster.clusterId}:`, err);
+      console.error(`discover: cluster ${cluster.clusterId} failed:`, err);
     }
   }
 
   return NextResponse.json({
-    routes,
-    totalReady,
-    remaining: Math.max(0, totalReady - routes.length),
+    routes: created,
+    remaining: Math.max(0, ready.length - created.length),
   });
 }

@@ -10,6 +10,10 @@ export const ROUTE_TYPES: RouteType[] = [
   "Track",
 ];
 
+// Presets offered in the add-route UI (stored as free text in the DB).
+export const SURFACES = ["Paved", "Trail", "Gravel", "Track", "Mixed"];
+export const FLATNESS = ["Flat", "Rolling", "Hilly"];
+
 export interface RouteFilters {
   query: string;
   city: City | "all";
@@ -42,7 +46,7 @@ export function applyFilters(
     if (q && !`${r.name} ${r.city} ${r.description}`.toLowerCase().includes(q))
       return false;
     if (f.city !== "all" && r.city !== f.city) return false;
-    if (f.types.length && !f.types.includes(r.routeType)) return false;
+    if (f.types.length && !f.types.some((t) => t === r.routeType)) return false;
     if (r.distanceMi > f.maxDistance) return false;
     if (f.certifiedOnly && !r.loopCertified) return false;
     if (f.tags.length) {

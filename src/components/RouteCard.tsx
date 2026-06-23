@@ -1,8 +1,12 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { MapPin, TrendingUp, BadgeCheck } from "lucide-react";
 import clsx from "clsx";
 import type { RouteWithStats } from "@/lib/types";
+import { useStore } from "@/lib/store";
+import { formatDistance, formatElevation } from "@/lib/units";
 import { ScoreRing } from "./ScoreRing";
 import { RouteTypeBadge } from "./RouteTypeBadge";
 import { SaveButton } from "./SaveButton";
@@ -17,6 +21,7 @@ export function RouteCard({
   route: RouteWithStats;
   variant?: "rail" | "wide";
 }) {
+  const { unit } = useStore();
   return (
     <Link
       href={`/route/${route.id}`}
@@ -58,10 +63,10 @@ export function RouteCard({
               <MapPin className="h-4 w-4 text-loop-green" />
               {route.city}
             </span>
-            <span>{route.distanceMi} mi</span>
+            <span>{formatDistance(route.distanceMi, unit)}</span>
             <span className="flex items-center gap-1">
               <TrendingUp className="h-4 w-4 text-loop-green" />
-              {route.elevationFt} ft
+              {formatElevation(route.elevationFt, unit)}
             </span>
           </div>
         </div>

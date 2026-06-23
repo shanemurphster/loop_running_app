@@ -2,15 +2,26 @@
 
 import { useMemo, useState } from "react";
 import clsx from "clsx";
+import { LogOut } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Avatar } from "@/components/Avatar";
 import { RouteCard } from "@/components/RouteCard";
-import { SEED_FOLLOWS } from "@/lib/seed";
 
 type Tab = "saved" | "created" | "reviewed";
 
 export default function ProfilePage() {
-  const { currentUser, routes, reactions, isSaved } = useStore();
+  const {
+    currentUser,
+    routes,
+    reactions,
+    isSaved,
+    isGuest,
+    user,
+    followingIds,
+    followerCount,
+    openAuthPrompt,
+    signOut,
+  } = useStore();
   const [tab, setTab] = useState<Tab>("saved");
 
   const created = routes.filter((r) => r.creatorId === currentUser.id);
@@ -26,12 +37,9 @@ export default function ProfilePage() {
   );
   const reviewed = routes.filter((r) => reviewedIds.has(r.id));
 
-  const followers = SEED_FOLLOWS.filter(
-    (f) => f.followingId === currentUser.id
-  ).length;
-  const following = SEED_FOLLOWS.filter(
-    (f) => f.followerId === currentUser.id
-  ).length;
+  const following = followingIds.length;
+  const followers = followerCount;
+  const signedIn = !!user && !isGuest;
 
   const list = tab === "saved" ? saved : tab === "created" ? created : reviewed;
 
@@ -40,12 +48,32 @@ export default function ProfilePage() {
       <header className="px-4 pb-2 pt-6">
         <div className="flex items-center gap-4">
           <Avatar user={currentUser} size={72} />
-          <div>
-            <h1 className="text-2xl font-bold">{currentUser.name}</h1>
-            <p className="text-sm text-loop-muted">
-              @{currentUser.username} · {currentUser.city}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-2xl font-bold">
+              {signedIn ? currentUser.name || `@${currentUser.username}` : "Guest"}
+            </h1>
+            <p className="truncate text-sm text-loop-muted">
+              {signedIn
+                ? `@${currentUser.username}${currentUser.city ? ` · ${currentUser.city}` : ""}`
+                : "Browsing without an account"}
             </p>
           </div>
+          {signedIn ? (
+            <button
+              onClick={signOut}
+              aria-label="Sign out"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-loop-panel text-loop-muted"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={openAuthPrompt}
+              className="shrink-0 rounded-full bg-loop-green px-4 py-2 text-sm font-bold text-black"
+            >
+              Sign in
+            </button>
+          )}
         </div>
 
         {currentUser.bio && (

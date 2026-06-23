@@ -7,41 +7,44 @@ import { ArrowLeft, Sparkles, Upload, PencilLine, Watch } from "lucide-react";
 import clsx from "clsx";
 import { useStore } from "@/lib/store";
 import { CITY_CENTERS, makeLoop } from "@/lib/geo";
-import { CITIES, ROUTE_TYPES } from "@/lib/filters";
-import type { City, Route, RouteType } from "@/lib/types";
+import { CITIES, ROUTE_TYPES, SURFACES, FLATNESS } from "@/lib/filters";
 
 export default function AddRoutePage() {
   const router = useRouter();
   const { addRoute, currentUser } = useStore();
 
   const [name, setName] = useState("");
-  const [city, setCity] = useState<City>(currentUser.city);
-  const [routeType, setRouteType] = useState<RouteType>("Easy");
+  const [city, setCity] = useState<string>(currentUser.city || CITIES[0]);
+  const [routeType, setRouteType] = useState<string>("Easy");
+  const [surface, setSurface] = useState<string>("Paved");
+  const [flatness, setFlatness] = useState<string>("Flat");
   const [distance, setDistance] = useState("5");
   const [elevation, setElevation] = useState("50");
   const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const canSubmit = name.trim().length > 1 && Number(distance) > 0;
+  const canSubmit = name.trim().length > 1 && Number(distance) > 0 && !saving;
 
-  function submit() {
+  async function submit() {
     if (!canSubmit) return;
+    setSaving(true);
     const dist = Number(distance);
-    const route: Route = {
-      id: `r_local_${Date.now()}`,
-      creatorId: currentUser.id,
+    const center = CITY_CENTERS[city]?.center ?? [-75.1652, 39.9526];
+    // No map drawing yet — fabricate a placeholder loop. The follow-roads
+    // drawing flow (next milestone) replaces this with real geometry.
+    const id = await addRoute({
       name: name.trim(),
+      description: description.trim() || "A new route on Loop.",
       city,
       routeType,
+      surface,
+      flatness,
       distanceMi: dist,
       elevationFt: Number(elevation) || 0,
-      description: description.trim() || "A new route on Loop.",
-      path: makeLoop(CITY_CENTERS[city].center, dist, Math.floor(dist * 7) + 3),
-      image:
-        "https://images.unsplash.com/photo-1502904550040-7534597429ae?w=800&q=70",
-      createdAt: new Date().toISOString(),
-    };
-    addRoute(route);
-    router.push(`/route/${route.id}`);
+      path: makeLoop(center, dist, Math.floor(dist * 7) + 3),
+    });
+    setSaving(false);
+    if (id) router.push(`/route/${id}`);
   }
 
   return (
@@ -96,6 +99,26 @@ export default function AddRoutePage() {
           </div>
         </Field>
 
+        <Field label="Surface">
+          <div className="flex flex-wrap gap-2">
+            {SURFACES.map((s) => (
+              <Pill key={s} active={surface === s} onClick={() => setSurface(s)}>
+                {s}
+              </Pill>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="How flat?">
+          <div className="flex flex-wrap gap-2">
+            {FLATNESS.map((f) => (
+              <Pill key={f} active={flatness === f} onClick={() => setFlatness(f)}>
+                {f}
+              </Pill>
+            ))}
+          </div>
+        </Field>
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Distance (mi)">
             <input
@@ -137,7 +160,7 @@ export default function AddRoutePage() {
               : "cursor-not-allowed bg-loop-panel2 text-loop-muted"
           )}
         >
-          Publish route
+          {saving ? "Publishing…" : "Publish route"}
         </button>
       </div>
 

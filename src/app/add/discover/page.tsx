@@ -8,40 +8,44 @@ import clsx from "clsx";
 import { useStore } from "@/lib/store";
 import { RouteTypeBadge } from "@/components/RouteTypeBadge";
 import { TAG_MAP } from "@/lib/tags";
-import type { Route } from "@/lib/types";
 
-// Admin / dev surface for the route-discovery pipeline.
-//
-// This is the ONLY place a (paid) Haiku call can be triggered, and only by an
-// explicit scan — never automatically, never per user view. Production runs the
-// same scan as a batched background job over real Strava/Garmin activity.
+interface Found {
+  id: string;
+  name: string;
+  city: string;
+  distanceMi: number;
+  routeType: string;
+  loopCertified: boolean;
+  runCount: number;
+  predictedTags: string[];
+}
+
+// Admin / dev surface for the discovery pipeline. The ONLY place a (paid) Haiku
+// call can fire, and only on an explicit scan. The server persists discovered
+// routes + dedupes against the DB, so a path is named once ever.
 export default function DiscoverRoutesPage() {
   const router = useRouter();
-  const { addDiscoveredRoutes, discoveredClusterIds } = useStore();
+  const { refresh } = useStore();
 
   const [status, setStatus] = useState<"idle" | "scanning" | "done" | "error">("idle");
-  const [found, setFound] = useState<Route[]>([]);
+  const [found, setFound] = useState<Found[]>([]);
   const [remaining, setRemaining] = useState(0);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
 
   async function scan() {
     setStatus("scanning");
     setError("");
     try {
-      const res = await fetch("/api/discover-routes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ knownClusterIds: discoveredClusterIds }),
-      });
+      const res = await fetch("/api/discover-routes", { method: "POST" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Scan failed (${res.status})`);
       }
-      const data: { routes: Route[]; remaining: number } = await res.json();
-      addDiscoveredRoutes(data.routes);
+      const data: { routes: Found[]; remaining: number } = await res.json();
       setFound(data.routes);
       setRemaining(data.remaining ?? 0);
       setStatus("done");
+      await refresh(); // pull the newly-created routes into the app
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setStatus("error");
@@ -70,11 +74,11 @@ export default function DiscoverRoutesPage() {
           actually run. When enough distinct runners cover the same path, that
           path becomes a route — and once it&apos;s popular enough, it&apos;s
           marked <span className="text-loop-green">Loop Certified</span>. The AI
-          only names a route once, at the moment it&apos;s promoted.
+          names a route only once, the moment it&apos;s promoted.
         </p>
         <p className="mt-2 text-xs text-loop-muted">
-          Reading from a simulated activity feed for now. Strava &amp; Garmin
-          plug in here later.
+          Reading a simulated activity feed for now. Strava &amp; Garmin plug in
+          here later.
         </p>
       </div>
 
@@ -102,16 +106,17 @@ export default function DiscoverRoutesPage() {
         <div className="mt-5">
           {found.length === 0 ? (
             <p className="py-8 text-center text-sm text-loop-muted">
-              No new routes ready yet. Paths need at least 3 distinct runners
-              before they&apos;re promoted.
+              No new routes ready. Paths need at least 3 distinct runners before
+              promotion.
             </p>
           ) : (
             <>
               <p className="mb-3 text-sm text-zinc-300">
-                Discovered <span className="font-bold text-loop-green">{found.length}</span>{" "}
+                Discovered{" "}
+                <span className="font-bold text-loop-green">{found.length}</span>{" "}
                 new {found.length === 1 ? "route" : "routes"}
                 {remaining > 0 && (
-                  <span className="text-loop-muted"> · {remaining} more ready to scan</span>
+                  <span className="text-loop-muted"> · {remaining} more ready</span>
                 )}
               </p>
               <div className="space-y-3">
@@ -134,12 +139,9 @@ export default function DiscoverRoutesPage() {
                     </div>
                     <h3 className="mt-2 font-bold">{r.name}</h3>
                     <p className="text-sm text-loop-muted">
-                      {r.city} · {r.distanceMi} mi
+                      {r.city} · {r.distanceMi.toFixed(1)} mi
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
-                      {r.description}
-                    </p>
-                    {r.predictedTags && r.predictedTags.length > 0 && (
+                    {r.predictedTags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {r.predictedTags.map((t) => (
                           <span

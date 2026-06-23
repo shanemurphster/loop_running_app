@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(git commit *)",
+      "Bash(node -e ' *)",
+      "Bash(cd \"c:/Users/ShaneMurphy/OneDrive - Alias Intelligence/loop_running_app\" && echo \"=== .env \\(values masked, comments shown\\) ===\" && nl -ba .env | sed -E 's/\\(=\\).+/\\\\1<value present>/' ; echo \"=== mtime ===\" && stat -c '%y  %n' .env 2>/dev/null || ls -la .env; echo \"=== any other env files? ===\" && ls -la .env* 2>/dev/null)",
+      "Read(//c/Users/ShaneMurphy/OneDrive - Alias Intelligence/loop_running_app/**)",
+      "Bash(npx next *)",
+      "Bash(curl -s -X POST http://localhost:3000/api/discover-routes)",
+      "Bash(python -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\('created:',[\\(r['name'],r['city'],r['runCount'],r['loopCertified']\\) for r in d['routes']]\\);print\\('remaining:',d['remaining']\\)\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\ShaneMurphy\\.claude\\projects\\c--Users-ShaneMurphy-OneDrive---Alias-Intelligence-loop-running-app\\memory",
+      "c:\\Users\\ShaneMurphy\\.claude\\projects\\c--Users-ShaneMurphy-OneDrive---Alias-Intelligence-loop-running-app"
     ]
   }
 }

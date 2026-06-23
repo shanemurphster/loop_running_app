@@ -6,10 +6,15 @@ export type ReactionKind = "like" | "ok" | "dislike";
 
 export type ComparisonWinner = "a" | "b" | "tie";
 
-/** Route "vibe" classification — drives the colored badge on cards. */
+/**
+ * Route "vibe" classification. The app offers these as presets, but the column
+ * is free text (real user routes can carry anything), so `Route.routeType` is a
+ * plain string — this union is just the preset list / badge keys.
+ */
 export type RouteType = "Long Run" | "Tempo" | "Easy" | "Trail" | "Track" | "Hills";
 
-export type City = "Philadelphia" | "Miami" | "New York";
+/** City is free text in the DB (any city a user draws in). */
+export type City = string;
 
 /** A positive/negative signal tag a runner can attach to a reaction. */
 export interface TagDef {
@@ -60,7 +65,13 @@ export interface Route {
   name: string;
   description: string;
   city: City;
-  routeType: RouteType;
+  /** Free text; presets in the app. See RouteType for the preset list. */
+  routeType: string;
+  /** User-described, unverified. Presets: Paved/Trail/Gravel/Track/Mixed. */
+  surface?: string;
+  /** User-described, unverified. Presets: Flat/Rolling/Hilly. */
+  flatness?: string;
+  /** Display values (miles/feet). Canonical meters live in the DB. */
   distanceMi: number;
   elevationFt: number;
   /** Loop geometry as [lng, lat] points. Used by both Mapbox and SVG fallback. */

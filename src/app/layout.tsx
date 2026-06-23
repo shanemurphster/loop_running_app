@@ -3,6 +3,7 @@ import "./globals.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { StoreProvider } from "@/lib/store";
 import { BottomNav } from "@/components/BottomNav";
+import { AuthPrompt } from "@/components/AuthPrompt";
 
 export const metadata: Metadata = {
   title: "Loop — Discover your next run",
@@ -30,6 +31,7 @@ export default function RootLayout({
           <div className="relative mx-auto min-h-screen w-full max-w-app bg-loop-ink">
             <main className="pb-24">{children}</main>
             <BottomNav />
+            <AuthPrompt />
           </div>
         </StoreProvider>
       </body>

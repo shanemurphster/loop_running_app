@@ -10,6 +10,7 @@ import { RouteCard } from "@/components/RouteCard";
 import { ScoreRing } from "@/components/ScoreRing";
 import { FilterSheet } from "@/components/FilterSheet";
 import { useStore } from "@/lib/store";
+import { formatDistance } from "@/lib/units";
 import {
   applyFilters,
   countActive,
@@ -28,7 +29,7 @@ export default function DiscoverPage() {
 
 function DiscoverInner() {
   const params = useSearchParams();
-  const { routes } = useStore();
+  const { routes, unit } = useStore();
 
   const [filters, setFilters] = useState<RouteFilters>(() => ({
     ...DEFAULT_FILTERS,
@@ -116,7 +117,8 @@ function DiscoverInner() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{selected.name}</p>
                     <p className="text-sm text-loop-muted">
-                      {selected.city} · {selected.distanceMi} mi · {selected.routeType}
+                      {selected.city} · {formatDistance(selected.distanceMi, unit)} ·{" "}
+                      {selected.routeType}
                     </p>
                   </div>
                 </Link>

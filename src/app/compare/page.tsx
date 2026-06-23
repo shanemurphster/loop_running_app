@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { formatDistance, formatElevation } from "@/lib/units";
 import { RouteTypeBadge } from "@/components/RouteTypeBadge";
 import type { ComparisonWinner, RouteWithStats } from "@/lib/types";
 
@@ -41,8 +42,26 @@ export default function ComparePage() {
     pickPair();
   }
 
+  if (routes.length < 2) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-2xl">🆚</p>
+        <p className="font-semibold">Not enough routes yet</p>
+        <p className="text-sm text-loop-muted">
+          Comparisons need at least two routes. Add a few and come back.
+        </p>
+        <button
+          onClick={() => router.push("/add")}
+          className="mt-2 rounded-xl bg-loop-green px-5 py-2.5 font-bold text-black"
+        >
+          Add a route
+        </button>
+      </div>
+    );
+  }
+
   if (!pair) {
-    return <div className="p-6 text-loop-muted">Loading comparisons…</div>;
+    return <div className="p-6 text-loop-muted">Loading…</div>;
   }
 
   const [a, b] = pair;
@@ -89,6 +108,7 @@ function CompareCard({
   route: RouteWithStats;
   onClick: () => void;
 }) {
+  const { unit } = useStore();
   return (
     <button
       onClick={onClick}
@@ -108,7 +128,8 @@ function CompareCard({
       <div className="absolute inset-x-0 bottom-0 p-4 text-left">
         <h2 className="text-xl font-extrabold text-white">{route.name}</h2>
         <p className="text-sm text-zinc-200">
-          {route.distanceMi} mi · {route.elevationFt} ft · {route.city}
+          {formatDistance(route.distanceMi, unit)} ·{" "}
+          {formatElevation(route.elevationFt, unit)} · {route.city}
         </p>
       </div>
     </button>

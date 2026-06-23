@@ -18,6 +18,7 @@ import { SaveButton } from "@/components/SaveButton";
 import { Avatar } from "@/components/Avatar";
 import { ReactionPrompt } from "@/components/ReactionPrompt";
 import { TAG_MAP } from "@/lib/tags";
+import { formatDistance, formatElevation } from "@/lib/units";
 import type { ReactionKind } from "@/lib/types";
 
 const REACTION_EMOJI: Record<ReactionKind, string> = {
@@ -29,7 +30,8 @@ const REACTION_EMOJI: Record<ReactionKind, string> = {
 export default function RouteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { getRoute, getUser, reactionsFor } = useStore();
+  const { getRoute, getUser, reactionsFor, unit, isGuest, openAuthPrompt } =
+    useStore();
   const [showReaction, setShowReaction] = useState(false);
 
   const route = getRoute(id);
@@ -87,8 +89,16 @@ export default function RouteDetailPage() {
 
         {/* Stats */}
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat icon={Ruler} label="Distance" value={`${route.distanceMi} mi`} />
-          <Stat icon={TrendingUp} label="Elevation" value={`${route.elevationFt} ft`} />
+          <Stat
+            icon={Ruler}
+            label="Distance"
+            value={formatDistance(route.distanceMi, unit)}
+          />
+          <Stat
+            icon={TrendingUp}
+            label="Elevation"
+            value={formatElevation(route.elevationFt, unit)}
+          />
           <Stat
             icon={Activity}
             label="Runs logged"
@@ -209,7 +219,7 @@ export default function RouteDetailPage() {
       {/* Sticky react CTA */}
       <div className="fixed inset-x-0 bottom-[76px] z-30 mx-auto max-w-app px-4">
         <button
-          onClick={() => setShowReaction(true)}
+          onClick={() => (isGuest ? openAuthPrompt() : setShowReaction(true))}
           className="w-full rounded-xl bg-loop-green py-3.5 font-bold text-black shadow-lg shadow-loop-green/20 transition active:scale-[0.98]"
         >
           Rate this run
