@@ -9,7 +9,13 @@ import { useStore } from "@/lib/store";
 import { RouteDraw } from "@/components/RouteDraw";
 import { MiniRoute } from "@/components/MiniRoute";
 import { ROUTE_TYPES, SURFACES, FLATNESS } from "@/lib/filters";
-import { formatDistance, metersToMiles } from "@/lib/units";
+import {
+  formatDistance,
+  formatElevation,
+  metersToMiles,
+  metersToFeet,
+} from "@/lib/units";
+import { elevationGainMeters } from "@/lib/elevation";
 import { MAPBOX_TOKEN, HAS_MAPBOX } from "@/lib/mapbox";
 import type { LngLat } from "@/lib/types";
 
@@ -20,6 +26,8 @@ export default function AddRoutePage() {
   const [step, setStep] = useState<"draw" | "details">("draw");
   const [path, setPath] = useState<LngLat[]>([]);
   const [distanceM, setDistanceM] = useState(0);
+  const [elevationM, setElevationM] = useState(0);
+  const [elevLoading, setElevLoading] = useState(false);
 
   const [name, setName] = useState("");
   const [city, setCity] = useState(currentUser.city || "");
@@ -47,6 +55,22 @@ export default function AddRoutePage() {
       .catch(() => {});
   }, [step, city, path]);
 
+  // Pull a real elevation profile for the drawn line (best-effort).
+  useEffect(() => {
+    if (step !== "details" || path.length < 2) return;
+    let cancelled = false;
+    setElevLoading(true);
+    elevationGainMeters(path).then((m) => {
+      if (!cancelled) {
+        setElevationM(m);
+        setElevLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, path]);
+
   function next() {
     if (isGuest) {
       openAuthPrompt();
@@ -67,7 +91,7 @@ export default function AddRoutePage() {
       flatness,
       path,
       distanceMi: metersToMiles(distanceM),
-      elevationFt: 0,
+      elevationFt: metersToFeet(elevationM),
     });
     setSaving(false);
     if (id) router.push(`/route/${id}`);
@@ -132,11 +156,15 @@ export default function AddRoutePage() {
         <div className="space-y-4 px-4 pb-10">
           <div className="overflow-hidden rounded-2xl border border-loop-line">
             <MiniRoute path={path} width={400} height={160} className="h-40 w-full" />
-            <div className="flex items-center gap-3 bg-loop-panel px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 bg-loop-panel px-3 py-2 text-sm">
               <span className="font-bold">
                 {formatDistance(metersToMiles(distanceM), unit)}
               </span>
-              <span className="text-loop-muted">auto-measured</span>
+              <span className="text-loop-muted">·</span>
+              <span className="font-bold">
+                {elevLoading ? "…" : formatElevation(metersToFeet(elevationM), unit)}
+              </span>
+              <span className="text-loop-muted">gain · auto-measured</span>
             </div>
           </div>
 

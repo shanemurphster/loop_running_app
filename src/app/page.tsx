@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, TrendingUp, Users, Sparkles } from "lucide-react";
+import { ChevronRight, TrendingUp, Users, Sparkles, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import { AppHeader } from "@/components/AppHeader";
 import { RouteCard } from "@/components/RouteCard";
@@ -53,7 +53,19 @@ export default function HomePage() {
     ? sorted.filter((r) => r.city === homeCity).slice(0, 6)
     : [];
 
-  if (ready && routes.length === 0) {
+  if (!ready) {
+    return (
+      <div>
+        <AppHeader subtitle="Discover your next run" />
+        <div className="h-px w-full bg-loop-line/70" />
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-loop-muted" />
+        </div>
+      </div>
+    );
+  }
+
+  if (routes.length === 0) {
     return (
       <div>
         <AppHeader subtitle="Discover your next run" />
