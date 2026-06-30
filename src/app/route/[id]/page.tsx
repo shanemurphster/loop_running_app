@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -110,13 +111,22 @@ export default function RouteDetailPage() {
           {route.description}
         </p>
 
-        {creator && (
-          <div className="mt-4 flex items-center gap-2 text-sm text-loop-muted">
-            <Avatar user={creator} size={28} />
-            Added by{" "}
-            <span className="font-medium text-zinc-200">@{creator.username}</span>
-          </div>
-        )}
+        {creator &&
+          (route.creatorId === "loop" ? (
+            <div className="mt-4 flex items-center gap-2 text-sm text-loop-muted">
+              <Avatar user={creator} size={28} />
+              Added by <span className="font-medium text-zinc-200">Loop</span>
+            </div>
+          ) : (
+            <Link
+              href={`/user/${route.creatorId}`}
+              className="mt-4 flex items-center gap-2 text-sm text-loop-muted"
+            >
+              <Avatar user={creator} size={28} />
+              Added by{" "}
+              <span className="font-medium text-zinc-200">@{creator.username}</span>
+            </Link>
+          ))}
       </div>
 
       {/* Predicted vibes — shown for freshly discovered routes before real reactions */}
@@ -185,9 +195,16 @@ export default function RouteDetailPage() {
               >
                 <div className="flex items-center gap-2">
                   {u && <Avatar user={u} size={28} />}
-                  <span className="text-sm font-medium text-zinc-200">
-                    @{u?.username ?? "runner"}
-                  </span>
+                  {u ? (
+                    <Link
+                      href={`/user/${u.id}`}
+                      className="text-sm font-medium text-zinc-200"
+                    >
+                      @{u.username}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-medium text-zinc-200">runner</span>
+                  )}
                   <span className="text-lg">{REACTION_EMOJI[r.reaction]}</span>
                   {r.fromActivity && (
                     <span className="ml-auto rounded bg-loop-panel2 px-1.5 py-0.5 text-[10px] text-loop-muted">

@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { UserPlus, UserCheck } from "lucide-react";
 import clsx from "clsx";
 import { useStore } from "@/lib/store";
 import { Avatar } from "@/components/Avatar";
@@ -15,7 +17,8 @@ interface Row {
 }
 
 export default function LeaderboardPage() {
-  const { users, routes, reactions } = useStore();
+  const { users, routes, reactions, user, isFollowing, toggleFollow } =
+    useStore();
   const [city, setCity] = useState<City>("Philadelphia");
 
   const rows = useMemo<Row[]>(() => {
@@ -65,7 +68,9 @@ export default function LeaderboardPage() {
 
       <div className="mt-4 space-y-2">
         {rows.map((row, i) => {
-          const user = users.find((u) => u.id === row.userId)!;
+          const rowUser = users.find((u) => u.id === row.userId)!;
+          const isSelf = user?.id === rowUser.id;
+          const following = isFollowing(rowUser.id);
           return (
             <div
               key={row.userId}
@@ -83,17 +88,35 @@ export default function LeaderboardPage() {
               >
                 {i + 1}
               </span>
-              <Avatar user={user} size={40} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">@{user.username}</p>
-                <p className="text-xs text-loop-muted">
-                  {row.reactions} reactions · {row.routes} routes
-                </p>
-              </div>
-              {user.badges[0] && (
-                <span className="rounded-full bg-loop-panel2 px-2.5 py-1 text-xs font-medium text-loop-green">
-                  {user.badges[0]}
-                </span>
+              <Link
+                href={`/user/${rowUser.id}`}
+                className="flex min-w-0 flex-1 items-center gap-3"
+              >
+                <Avatar user={rowUser} size={40} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">@{rowUser.username}</p>
+                  <p className="text-xs text-loop-muted">
+                    {row.reactions} reactions · {row.routes} routes
+                  </p>
+                </div>
+              </Link>
+              {!isSelf && (
+                <button
+                  onClick={() => toggleFollow(rowUser.id)}
+                  aria-label={following ? "Unfollow" : "Follow"}
+                  className={clsx(
+                    "grid h-9 w-9 shrink-0 place-items-center rounded-full transition active:scale-90",
+                    following
+                      ? "bg-loop-panel2 text-loop-green"
+                      : "bg-loop-green text-black"
+                  )}
+                >
+                  {following ? (
+                    <UserCheck className="h-4 w-4" />
+                  ) : (
+                    <UserPlus className="h-4 w-4" />
+                  )}
+                </button>
               )}
             </div>
           );

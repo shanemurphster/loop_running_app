@@ -110,6 +110,8 @@ interface StoreValue {
   ) => Promise<void>;
   toggleSave: (routeId: string) => Promise<void>;
   addRoute: (input: NewRoute) => Promise<string | null>;
+  isFollowing: (userId: string) => boolean;
+  toggleFollow: (userId: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -436,6 +438,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, authUser, requireAuth, loadData]
   );
 
+  const toggleFollow = useCallback<StoreValue["toggleFollow"]>(
+    async (userId) => {
+      if (!requireAuth()) return;
+      if (userId === authUser!.id) return;
+      const currently = followingIds.includes(userId);
+      setFollowingIds((prev) =>
+        currently ? prev.filter((x) => x !== userId) : [...prev, userId]
+      );
+      if (currently) {
+        await supabase
+          .from("follows")
+          .delete()
+          .eq("follower_id", authUser!.id)
+          .eq("following_id", userId);
+      } else {
+        await supabase
+          .from("follows")
+          .insert({ follower_id: authUser!.id, following_id: userId });
+      }
+    },
+    [supabase, authUser, requireAuth, followingIds]
+  );
+
   const currentUser = profile ?? GUEST_USER;
 
   const value: StoreValue = useMemo(
@@ -472,6 +497,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addComparison,
       toggleSave,
       addRoute,
+      isFollowing: (userId) => followingIds.includes(userId),
+      toggleFollow,
       refresh: loadData,
     }),
     [
@@ -495,6 +522,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addComparison,
       toggleSave,
       addRoute,
+      toggleFollow,
       loadData,
     ]
   );

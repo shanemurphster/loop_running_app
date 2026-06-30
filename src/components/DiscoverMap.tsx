@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { bounds, centroid, projectToSvg } from "@/lib/geo";
 import { HAS_MAPBOX, MAP_STYLE, MAPBOX_TOKEN } from "@/lib/mapbox";
-import type { RouteWithStats } from "@/lib/types";
+import type { LngLat, RouteWithStats } from "@/lib/types";
 
 interface Props {
   routes: RouteWithStats[];
@@ -12,49 +12,46 @@ interface Props {
   className?: string;
 }
 
-// Map of many routes. Mapbox build uses native GeoJSON clustering; the
-// token-less fallback projects route centroids onto a grid as tappable pins.
-export function DiscoverMap({ routes, selectedId, onSelect, className }: Props) {
-  if (!HAS_MAPBOX) {
-    return (
-      <FallbackMap
-        routes={routes}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        className={className}
-      />
-    );
-  }
-  return (
-    <MapboxMap
-      routes={routes}
-      selectedId={selectedId}
-      onSelect={onSelect}
-      className={className}
-    />
-  );
+// Map of many routes. Each route is drawn as its full outline; dense areas
+// collapse into a numbered cluster bubble. Selecting a route highlights its
+// line and frames it.
+export function DiscoverMap(props: Props) {
+  if (!HAS_MAPBOX) return <FallbackMap {...props} />;
+  return <MapboxMap {...props} />;
+}
+
+function lineFeature(r: RouteWithStats) {
+  return {
+    type: "Feature" as const,
+    properties: { id: r.id },
+    geometry: { type: "LineString" as const, coordinates: r.path },
+  };
 }
 
 function MapboxMap({ routes, selectedId, onSelect, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("mapbox-gl").Map | null>(null);
+  const loadedRef = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
-  const features = useMemo(
-    () =>
-      routes.map((r) => {
-        const c = centroid(r.path);
-        return {
-          type: "Feature" as const,
-          properties: { id: r.id, name: r.name, score: r.loopScore },
-          geometry: { type: "Point" as const, coordinates: c },
-        };
-      }),
+  const linesFC = useMemo(
+    () => ({ type: "FeatureCollection" as const, features: routes.map(lineFeature) }),
+    [routes]
+  );
+  const pointsFC = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: routes.map((r) => ({
+        type: "Feature" as const,
+        properties: { id: r.id },
+        geometry: { type: "Point" as const, coordinates: centroid(r.path) },
+      })),
+    }),
     [routes]
   );
 
-  // Init once.
+  // init once
   useEffect(() => {
     if (!ref.current) return;
     let cancelled = false;
@@ -65,177 +62,205 @@ function MapboxMap({ routes, selectedId, onSelect, className }: Props) {
       const map = new mapboxgl.Map({
         container: ref.current,
         style: MAP_STYLE,
-        center: features[0]?.geometry.coordinates ?? [-75.16, 39.95],
+        center: [-75.16, 39.95],
         zoom: 10,
         attributionControl: false,
       });
       mapRef.current = map;
 
       map.on("load", () => {
-        map.addSource("routes", {
+        map.addSource("routes-lines", { type: "geojson", data: linesFC });
+        map.addSource("selected-line", {
           type: "geojson",
-          data: { type: "FeatureCollection", features },
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addSource("routes-points", {
+          type: "geojson",
+          data: pointsFC,
           cluster: true,
-          clusterRadius: 45,
+          clusterRadius: 48,
+          clusterMaxZoom: 14,
         });
 
+        // all route outlines
+        map.addLayer({
+          id: "routes-lines",
+          type: "line",
+          source: "routes-lines",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#22e06a", "line-width": 2.5, "line-opacity": 0.5 },
+        });
+        // highlighted selection
+        map.addLayer({
+          id: "selected-line",
+          type: "line",
+          source: "selected-line",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#22e06a", "line-width": 5, "line-opacity": 1 },
+        });
+        // cluster bubbles
         map.addLayer({
           id: "clusters",
           type: "circle",
-          source: "routes",
+          source: "routes-points",
           filter: ["has", "point_count"],
           paint: {
-            "circle-color": "#22e06a",
-            "circle-opacity": 0.25,
-            "circle-radius": ["step", ["get", "point_count"], 18, 5, 24, 10, 30],
+            "circle-color": "#0a0a0b",
             "circle-stroke-color": "#22e06a",
             "circle-stroke-width": 2,
+            "circle-radius": ["step", ["get", "point_count"], 16, 5, 20, 15, 26],
           },
         });
         map.addLayer({
           id: "cluster-count",
           type: "symbol",
-          source: "routes",
+          source: "routes-points",
           filter: ["has", "point_count"],
           layout: {
             "text-field": ["get", "point_count_abbreviated"],
             "text-size": 13,
           },
-          paint: { "text-color": "#eafff2" },
+          paint: { "text-color": "#22e06a" },
         });
+        // lone (unclustered) routes get a small dot handle
         map.addLayer({
           id: "unclustered",
           type: "circle",
-          source: "routes",
+          source: "routes-points",
           filter: ["!", ["has", "point_count"]],
           paint: {
             "circle-color": "#22e06a",
-            "circle-radius": 8,
+            "circle-radius": 5,
             "circle-stroke-color": "#0a0a0b",
             "circle-stroke-width": 2,
           },
         });
 
-        map.on("click", "unclustered", (e) => {
-          const props = (
-            e.features?.[0] as { properties?: Record<string, unknown> } | undefined
-          )?.properties;
-          const id = props?.id;
-          if (id) onSelectRef.current(String(id));
-        });
+        const pick = (e: import("mapbox-gl").MapMouseEvent) => {
+          const f = (e.features?.[0] as { properties?: { id?: string } } | undefined)
+            ?.properties;
+          if (f?.id) onSelectRef.current(String(f.id));
+        };
+        map.on("click", "routes-lines", pick);
+        map.on("click", "unclustered", pick);
         map.on("click", "clusters", (e) => {
           const feature = e.features?.[0] as
             | {
-                properties?: Record<string, unknown>;
+                properties?: { cluster_id?: number };
                 geometry?: { coordinates: [number, number] };
               }
             | undefined;
-          const clusterId = feature?.properties?.cluster_id as number | undefined;
+          const clusterId = feature?.properties?.cluster_id;
           const coords = feature?.geometry?.coordinates;
           if (clusterId == null || !coords) return;
-          const src = map.getSource("routes") as import("mapbox-gl").GeoJSONSource;
+          const src = map.getSource("routes-points") as import("mapbox-gl").GeoJSONSource;
           src.getClusterExpansionZoom(clusterId, (err, zoom) => {
             if (err || zoom == null) return;
             map.easeTo({ center: coords, zoom });
           });
         });
-        map.on("mouseenter", "unclustered", () => {
-          map.getCanvas().style.cursor = "pointer";
-        });
-        map.on("mouseleave", "unclustered", () => {
-          map.getCanvas().style.cursor = "";
-        });
+        for (const layer of ["routes-lines", "unclustered", "clusters"]) {
+          map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
+          map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
+        }
+
+        loadedRef.current = true;
+        fitAll(map, routes);
       });
     })();
     return () => {
       cancelled = true;
+      loadedRef.current = false;
       mapRef.current?.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update source data + fit bounds when the route set changes.
+  // update data when the route set changes
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    const apply = () => {
-      const src = map.getSource("routes") as
-        | import("mapbox-gl").GeoJSONSource
-        | undefined;
-      if (!src) return;
-      src.setData({ type: "FeatureCollection", features });
-      if (features.length) {
-        const all = features.map((f) => f.geometry.coordinates);
-        const b = bounds(all as [number, number][]);
-        map.fitBounds(
-          [
-            [b.minLng, b.minLat],
-            [b.maxLng, b.maxLat],
-          ],
-          { padding: 60, maxZoom: 13, duration: 500 }
-        );
-      }
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once("idle", apply);
-  }, [features]);
+    if (!map || !loadedRef.current) return;
+    (map.getSource("routes-lines") as import("mapbox-gl").GeoJSONSource)?.setData(linesFC);
+    (map.getSource("routes-points") as import("mapbox-gl").GeoJSONSource)?.setData(pointsFC);
+    if (!selectedId) fitAll(map, routes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linesFC, pointsFC]);
+
+  // highlight + frame the selected route
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const sel = routes.find((r) => r.id === selectedId);
+    const src = map.getSource("selected-line") as
+      | import("mapbox-gl").GeoJSONSource
+      | undefined;
+    if (!sel) {
+      src?.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+    src?.setData(lineFeature(sel));
+    const b = bounds(sel.path);
+    map.fitBounds(
+      [
+        [b.minLng, b.minLat],
+        [b.maxLng, b.maxLat],
+      ],
+      { padding: 80, maxZoom: 15, duration: 500 }
+    );
+  }, [selectedId, routes]);
 
   return <div ref={ref} className={className} />;
 }
 
+function fitAll(map: import("mapbox-gl").Map, routes: RouteWithStats[]) {
+  const all: LngLat[] = routes.flatMap((r) => r.path);
+  if (all.length === 0) return;
+  const b = bounds(all);
+  map.fitBounds(
+    [
+      [b.minLng, b.minLat],
+      [b.maxLng, b.maxLat],
+    ],
+    { padding: 50, maxZoom: 13, duration: 400 }
+  );
+}
+
+// Token-less fallback: project every route's line into an SVG box; tap to select.
 function FallbackMap({ routes, selectedId, onSelect, className }: Props) {
   const W = 360;
   const H = 460;
-  const centroids = routes.map((r) => centroid(r.path));
-  const pts = centroids.length
-    ? projectToSvg(centroids, W, H, 36)
-    : [];
+  const all = routes.flatMap((r) => r.path);
+  const projAll = all.length ? projectToSvg(all, W, H, 28) : [];
+  // rebuild per-route by walking the flattened projection in order
+  let idx = 0;
+  const perRoute = routes.map((r) => {
+    const pts = projAll.slice(idx, idx + r.path.length);
+    idx += r.path.length;
+    return { id: r.id, pts };
+  });
 
   return (
     <div className={className}>
       <div className="relative h-full w-full overflow-hidden bg-[#101012]">
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="h-full w-full"
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <defs>
-            <pattern id="dgrid" width="28" height="28" patternUnits="userSpaceOnUse">
-              <path d="M28 0 L0 0 0 28" fill="none" stroke="#1a1a1e" strokeWidth="1" />
-            </pattern>
-          </defs>
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" preserveAspectRatio="xMidYMid slice">
           <rect width={W} height={H} fill="#101012" />
-          <rect width={W} height={H} fill="url(#dgrid)" />
-          {pts.map(([x, y], i) => {
-            const r = routes[i];
+          {perRoute.map((r) => {
             const active = r.id === selectedId;
+            const d = r.pts
+              .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
+              .join(" ");
             return (
-              <g
+              <path
                 key={r.id}
-                transform={`translate(${x},${y})`}
+                d={d}
+                fill="none"
+                stroke="#22e06a"
+                strokeWidth={active ? 4 : 2}
+                strokeOpacity={active ? 1 : 0.5}
                 className="cursor-pointer"
                 onClick={() => onSelect(r.id)}
-              >
-                <circle
-                  r={active ? 11 : 8}
-                  fill="#22e06a"
-                  stroke="#0a0a0b"
-                  strokeWidth={2}
-                  opacity={active ? 1 : 0.85}
-                />
-                {active && (
-                  <text
-                    y={-16}
-                    textAnchor="middle"
-                    fontSize="11"
-                    fill="#eafff2"
-                    fontWeight="600"
-                  >
-                    {r.name}
-                  </text>
-                )}
-              </g>
+              />
             );
           })}
         </svg>

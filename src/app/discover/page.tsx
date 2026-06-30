@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, Map as MapIcon, List, X } from "lucide-react";
@@ -17,7 +17,7 @@ import {
   DEFAULT_FILTERS,
   type RouteFilters,
 } from "@/lib/filters";
-import type { City, RouteType } from "@/lib/types";
+import type { City, RouteType, RouteWithStats } from "@/lib/types";
 
 export default function DiscoverPage() {
   return (
@@ -42,7 +42,6 @@ function DiscoverInner() {
   const [selectedId, setSelectedId] = useState<string | undefined>();
 
   const results = useMemo(() => applyFilters(routes, filters), [routes, filters]);
-  const selected = results.find((r) => r.id === selectedId);
   const activeCount = countActive(filters);
 
   return (
@@ -98,32 +97,21 @@ function DiscoverInner() {
             routes={results}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            className="h-[calc(100vh-220px)] w-full"
+            className="h-[calc(100vh-200px)] w-full"
           />
-          {selected && (
-            <div className="absolute inset-x-0 bottom-3 z-10 animate-slide-up px-4">
-              <div className="relative">
-                <button
-                  onClick={() => setSelectedId(undefined)}
-                  className="absolute -top-2 right-1 z-10 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-                <Link
-                  href={`/route/${selected.id}`}
-                  className="flex items-center gap-3 rounded-2xl border border-loop-line bg-loop-panel p-3"
-                >
-                  <ScoreRing score={selected.loopScore} size={48} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-bold">{selected.name}</p>
-                    <p className="text-sm text-loop-muted">
-                      {selected.city} · {formatDistance(selected.distanceMi, unit)} ·{" "}
-                      {selected.routeType}
-                    </p>
-                  </div>
-                </Link>
-              </div>
+          {results.length === 0 ? (
+            <div className="absolute inset-x-0 bottom-4 z-10 px-4 text-center">
+              <p className="inline-block rounded-xl bg-loop-ink/85 px-3 py-2 text-sm text-loop-muted backdrop-blur">
+                No routes match these filters.
+              </p>
             </div>
+          ) : (
+            <MapCarousel
+              routes={results}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              unit={unit}
+            />
           )}
         </div>
       ) : (
@@ -147,6 +135,65 @@ function DiscoverInner() {
           resultCount={results.length}
         />
       )}
+    </div>
+  );
+}
+
+// Horizontal carousel over the map. Tapping a card highlights its route; when
+// selection changes (from a map tap), the matching card scrolls into view.
+function MapCarousel({
+  routes,
+  selectedId,
+  onSelect,
+  unit,
+}: {
+  routes: RouteWithStats[];
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  unit: "mi" | "km";
+}) {
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    if (selectedId && cardRefs.current[selectedId]) {
+      cardRefs.current[selectedId]!.scrollIntoView({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
+    }
+  }, [selectedId]);
+
+  return (
+    <div className="no-scrollbar absolute inset-x-0 bottom-3 z-10 flex gap-3 overflow-x-auto px-4 pb-1">
+      {routes.map((r) => (
+        <div
+          key={r.id}
+          ref={(el) => {
+            cardRefs.current[r.id] = el;
+          }}
+          onClick={() => onSelect(r.id)}
+          className={clsx(
+            "flex w-[260px] shrink-0 cursor-pointer items-center gap-3 rounded-2xl border bg-loop-panel p-3 transition",
+            selectedId === r.id ? "border-loop-green" : "border-loop-line"
+          )}
+        >
+          <ScoreRing score={r.loopScore} size={44} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-bold">{r.name}</p>
+            <p className="truncate text-sm text-loop-muted">
+              {r.city} · {formatDistance(r.distanceMi, unit)} · {r.routeType}
+            </p>
+          </div>
+          <Link
+            href={`/route/${r.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 text-xs font-semibold text-loop-green"
+          >
+            Open
+          </Link>
+        </div>
+      ))}
     </div>
   );
 }
