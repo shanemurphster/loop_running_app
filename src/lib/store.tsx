@@ -128,6 +128,7 @@ function mapProfile(r: Record<string, unknown>): User {
     name: (r.name as string) ?? "",
     city: (r.city as string) ?? "",
     avatarColor: (r.avatar_color as string) ?? "#22e06a",
+    avatarUrl: (r.avatar_url as string) ?? undefined,
     badges: (r.badges as string[]) ?? [],
     bio: (r.bio as string) ?? undefined,
   };
@@ -461,6 +462,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, authUser, requireAuth, followingIds]
   );
 
+  const refresh = useCallback(async () => {
+    await Promise.all([loadData(), loadUser(authUser?.id ?? null)]);
+  }, [loadData, loadUser, authUser]);
+
   const currentUser = profile ?? GUEST_USER;
 
   const value: StoreValue = useMemo(
@@ -499,7 +504,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addRoute,
       isFollowing: (userId) => followingIds.includes(userId),
       toggleFollow,
-      refresh: loadData,
+      refresh,
     }),
     [
       ready,
@@ -523,7 +528,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toggleSave,
       addRoute,
       toggleFollow,
-      loadData,
+      refresh,
     ]
   );
 

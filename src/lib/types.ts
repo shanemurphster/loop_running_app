@@ -33,6 +33,7 @@ export interface User {
   name: string;
   city: City;
   avatarColor: string; // fallback avatar bg when no photo
+  avatarUrl?: string; // uploaded profile picture, if any
   badges: string[];
   bio?: string;
 }

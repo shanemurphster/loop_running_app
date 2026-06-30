@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { LogOut } from "lucide-react";
+import { LogOut, Camera, Loader2 } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/Avatar";
 import { RouteCard } from "@/components/RouteCard";
 
@@ -21,8 +22,33 @@ export default function ProfilePage() {
     followerCount,
     openAuthPrompt,
     signOut,
+    refresh,
   } = useStore();
   const [tab, setTab] = useState<Tab>("saved");
+  const supabase = useMemo(() => createClient(), []);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${user.id}/avatar_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (!error) {
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      await supabase
+        .from("profiles")
+        .update({ avatar_url: data.publicUrl })
+        .eq("id", user.id);
+      await refresh();
+    }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
 
   const created = routes.filter((r) => r.creatorId === currentUser.id);
   const saved = routes.filter((r) => isSaved(r.id));
@@ -47,7 +73,31 @@ export default function ProfilePage() {
     <div className="pb-10">
       <header className="px-4 pb-2 pt-6">
         <div className="flex items-center gap-4">
-          <Avatar user={currentUser} size={72} />
+          <div className="relative shrink-0">
+            <Avatar user={currentUser} size={72} />
+            {signedIn && (
+              <>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  aria-label="Change profile picture"
+                  className="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full border-2 border-loop-ink bg-loop-green text-black"
+                >
+                  {uploading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onPickFile}
+                />
+              </>
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-2xl font-bold">
               {signedIn ? currentUser.name || `@${currentUser.username}` : "Guest"}

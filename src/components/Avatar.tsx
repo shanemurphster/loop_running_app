@@ -6,10 +6,24 @@ export function Avatar({
   size = 36,
   className,
 }: {
-  user: Pick<User, "name" | "avatarColor">;
+  user: Pick<User, "name" | "avatarColor" | "avatarUrl">;
   size?: number;
   className?: string;
 }) {
+  if (user.avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={user.avatarUrl}
+        alt={user.name}
+        width={size}
+        height={size}
+        className={clsx("rounded-full object-cover", className)}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
   const initials = user.name
     .split(" ")
     .map((p) => p[0])
