@@ -4,6 +4,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { StoreProvider } from "@/lib/store";
 import { BottomNav } from "@/components/BottomNav";
 import { AuthPrompt } from "@/components/AuthPrompt";
+import { SetPasswordBanner } from "@/components/SetPasswordBanner";
 
 export const metadata: Metadata = {
   title: "Loop — Discover your next run",
@@ -32,6 +33,7 @@ export default function RootLayout({
             <main className="pb-24">{children}</main>
             <BottomNav />
             <AuthPrompt />
+            <SetPasswordBanner />
           </div>
         </StoreProvider>
       </body>

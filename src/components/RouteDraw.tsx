@@ -8,10 +8,15 @@ import { pathLengthMeters } from "@/lib/units";
 import type { LngLat } from "@/lib/types";
 
 type Mode = "roads" | "straight";
+type Drag = { index: number; points: LngLat[] };
 
 // OnTheGoMap-style route drawing. Tap to drop waypoints; the line either snaps
 // to real roads/paths (Mapbox Directions, walking) or connects straight. The
 // resulting geometry + distance are reported up via onChange.
+//
+// Existing waypoints are draggable to reposition them, and the line itself is
+// draggable — grabbing any point along it inserts a new waypoint there so you
+// can pull a wrong turn back onto the path you meant, same as tapping.
 //
 // Mapbox Directions allows up to 25 coordinates per request, plenty for a
 // hand-tapped route; we cap waypoints there in roads mode.
@@ -33,6 +38,12 @@ export function RouteDraw({
 
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const waypointsRef = useRef<LngLat[]>([]);
+  waypointsRef.current = waypoints;
+  // Set while a point/line is being dragged; suppresses the trailing "click"
+  // so a drag-release doesn't also append a brand-new waypoint.
+  const draggingRef = useRef<Drag | null>(null);
+  const suppressClickRef = useRef(false);
 
   // --- init map ---
   useEffect(() => {
@@ -63,6 +74,15 @@ export function RouteDraw({
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
         });
+        // Wide, invisible line sharing the same source — makes the thin
+        // visible line much easier to grab (mouse and, especially, touch).
+        map.addLayer({
+          id: "draw-line-hit",
+          type: "line",
+          source: "draw-line",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#000", "line-width": 26, "line-opacity": 0 },
+        });
         map.addLayer({
           id: "draw-line",
           type: "line",
@@ -79,7 +99,7 @@ export function RouteDraw({
           type: "circle",
           source: "draw-points",
           paint: {
-            "circle-radius": 5,
+            "circle-radius": 6,
             "circle-color": "#22e06a",
             "circle-stroke-color": "#0a0a0b",
             "circle-stroke-width": 2,
@@ -92,10 +112,112 @@ export function RouteDraw({
           () => {},
           { enableHighAccuracy: true, timeout: 4000 }
         );
+
+        // --- drag an existing point, or grab the line to insert a new one ---
+        function endDrag(map: import("mapbox-gl").Map) {
+          map.dragPan.enable();
+          map.getCanvas().style.cursor = "";
+          const drag = draggingRef.current;
+          draggingRef.current = null;
+          if (drag) setWaypoints(drag.points);
+          // "click" fires right after "mouseup"/touch release in the same
+          // gesture — defer clearing the suppress flag so it still applies.
+          setTimeout(() => {
+            suppressClickRef.current = false;
+          }, 0);
+        }
+
+        function onDown(
+          e: import("mapbox-gl").MapMouseEvent | import("mapbox-gl").MapTouchEvent
+        ) {
+          if (waypointsRef.current.length === 0) return;
+          const tolerance = 12;
+          const bbox: [import("mapbox-gl").PointLike, import("mapbox-gl").PointLike] = [
+            [e.point.x - tolerance, e.point.y - tolerance],
+            [e.point.x + tolerance, e.point.y + tolerance],
+          ];
+          const pointFeats = map.queryRenderedFeatures(bbox, { layers: ["draw-points"] });
+          const pointFeat = pointFeats.length
+            ? pointFeats.reduce((closest, f) => {
+                const dist = (feat: typeof f) => {
+                  const c = (feat.geometry as GeoJSON.Point).coordinates as [number, number];
+                  const p = map.project(c);
+                  return Math.hypot(p.x - e.point.x, p.y - e.point.y);
+                };
+                return dist(f) < dist(closest) ? f : closest;
+              })
+            : null;
+          const lineFeat = pointFeat
+            ? null
+            : map.queryRenderedFeatures(e.point, { layers: ["draw-line-hit"] })[0];
+          if (!pointFeat && !lineFeat) return; // let the normal "tap to append" click through
+
+          e.preventDefault();
+          map.dragPan.disable();
+          suppressClickRef.current = true;
+          map.getCanvas().style.cursor = "grabbing";
+
+          const points = [...waypointsRef.current];
+          let index: number;
+          if (pointFeat) {
+            index = pointFeat.properties!.index as number;
+          } else {
+            if (modeRef.current === "roads" && points.length >= MAX_WAYPOINTS) {
+              map.dragPan.enable();
+              suppressClickRef.current = false;
+              return;
+            }
+            index = nearestInsertIndex(points, [e.lngLat.lng, e.lngLat.lat]);
+            points.splice(index, 0, [e.lngLat.lng, e.lngLat.lat]);
+          }
+          draggingRef.current = { index, points };
+          setLine(map, points);
+          setPoints(map, points);
+
+          function onMove(
+            ev: import("mapbox-gl").MapMouseEvent | import("mapbox-gl").MapTouchEvent
+          ) {
+            const drag = draggingRef.current;
+            if (!drag) return;
+            drag.points[drag.index] = [ev.lngLat.lng, ev.lngLat.lat];
+            setLine(map, drag.points);
+            setPoints(map, drag.points);
+          }
+          function onUp() {
+            map.off("mousemove", onMove);
+            map.off("touchmove", onMove);
+            map.off("mouseup", onUp);
+            map.off("touchend", onUp);
+            map.off("touchcancel", onUp);
+            endDrag(map);
+          }
+          map.on("mousemove", onMove);
+          map.on("touchmove", onMove);
+          map.on("mouseup", onUp);
+          map.on("touchend", onUp);
+          map.on("touchcancel", onUp);
+        }
+        map.on("mousedown", onDown);
+        map.on("touchstart", onDown);
+
+        map.on("mouseenter", "draw-points", () => {
+          if (!draggingRef.current) map.getCanvas().style.cursor = "grab";
+        });
+        map.on("mouseenter", "draw-line-hit", () => {
+          if (!draggingRef.current) map.getCanvas().style.cursor = "copy";
+        });
+        map.on("mouseleave", "draw-points", () => {
+          if (!draggingRef.current) map.getCanvas().style.cursor = "";
+        });
+        map.on("mouseleave", "draw-line-hit", () => {
+          if (!draggingRef.current) map.getCanvas().style.cursor = "";
+        });
+
         setReady(true);
       });
 
       map.on("click", (e) => {
+        if (suppressClickRef.current) return;
         const pt: LngLat = [e.lngLat.lng, e.lngLat.lat];
         setWaypoints((prev) => {
           if (modeRef.current === "roads" && prev.length >= MAX_WAYPOINTS) return prev;
@@ -115,18 +237,7 @@ export function RouteDraw({
     const map = mapRef.current;
     if (!map || !ready) return;
 
-    // waypoint dots
-    const pointsData = {
-      type: "FeatureCollection" as const,
-      features: waypoints.map((c) => ({
-        type: "Feature" as const,
-        properties: {},
-        geometry: { type: "Point" as const, coordinates: c },
-      })),
-    };
-    (map.getSource("draw-points") as import("mapbox-gl").GeoJSONSource)?.setData(
-      pointsData
-    );
+    setPoints(map, waypoints);
 
     let cancelled = false;
     async function compute() {
@@ -234,6 +345,13 @@ export function RouteDraw({
           </span>
         </div>
       )}
+      {waypoints.length === 1 && (
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 text-center">
+          <span className="rounded-full bg-loop-ink/80 px-4 py-1.5 text-sm text-zinc-200 backdrop-blur">
+            Keep tapping, or drag a point or the line to adjust
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -247,6 +365,54 @@ function setLine(map: import("mapbox-gl").Map, path: LngLat[]) {
     properties: {},
     geometry: { type: "LineString", coordinates: path },
   });
+}
+
+function setPoints(map: import("mapbox-gl").Map, points: LngLat[]) {
+  const src = map.getSource("draw-points") as
+    | import("mapbox-gl").GeoJSONSource
+    | undefined;
+  src?.setData({
+    type: "FeatureCollection",
+    features: points.map((c, index) => ({
+      type: "Feature",
+      properties: { index },
+      geometry: { type: "Point", coordinates: c },
+    })),
+  });
+}
+
+/** Index to splice a new waypoint into `points` given where it was dropped —
+ * whichever existing segment it's closest to. */
+function nearestInsertIndex(points: LngLat[], p: LngLat): number {
+  if (points.length < 2) return points.length;
+  let bestDist = Infinity;
+  let bestIdx = points.length;
+  for (let i = 0; i < points.length - 1; i++) {
+    const d = pointToSegmentDistSq(p, points[i], points[i + 1]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i + 1;
+    }
+  }
+  return bestIdx;
+}
+
+// Planar approximation (fine at route-drawing scale) — just needs to pick the
+// right segment, not measure real-world distance.
+function pointToSegmentDistSq(p: LngLat, a: LngLat, b: LngLat): number {
+  const [px, py] = p;
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  const ddx = px - cx;
+  const ddy = py - cy;
+  return ddx * ddx + ddy * ddy;
 }
 
 function ModeBtn({

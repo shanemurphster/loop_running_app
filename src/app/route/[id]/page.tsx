@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Ruler,
   Activity,
+  Info,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { RouteMap } from "@/components/RouteMap";
@@ -18,6 +19,7 @@ import { RouteTypeBadge } from "@/components/RouteTypeBadge";
 import { SaveButton } from "@/components/SaveButton";
 import { Avatar } from "@/components/Avatar";
 import { ReactionPrompt } from "@/components/ReactionPrompt";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { TAG_MAP } from "@/lib/tags";
 import { formatDistance, formatElevation } from "@/lib/units";
 import type { ReactionKind } from "@/lib/types";
@@ -74,9 +76,11 @@ export default function RouteDetailPage() {
             <div className="mb-2 flex items-center gap-2">
               <RouteTypeBadge type={route.routeType} />
               {route.loopCertified && (
-                <span className="flex items-center gap-1 rounded-md bg-loop-green/20 px-2 py-0.5 text-xs font-semibold text-loop-green">
-                  <BadgeCheck className="h-3.5 w-3.5" /> Loop Certified
-                </span>
+                <InfoTooltip text="Loop Certified means enough different runners have logged this exact path that we're confident it's a real, well-traveled route — not just one person's upload.">
+                  <span className="flex items-center gap-1 rounded-md bg-loop-green/20 px-2 py-0.5 text-xs font-semibold text-loop-green">
+                    <BadgeCheck className="h-3.5 w-3.5" /> Loop Certified
+                  </span>
+                </InfoTooltip>
               )}
             </div>
             <h1 className="text-2xl font-black leading-tight">{route.name}</h1>
@@ -85,7 +89,12 @@ export default function RouteDetailPage() {
               {route.city}
             </p>
           </div>
-          <ScoreRing score={route.loopScore} size={60} />
+          <InfoTooltip
+            text="Loop Score (1–10) blends 👍/😐/👎 reactions, head-to-head Compare wins, and how recently people ran it — not just an average star rating."
+            align="right"
+          >
+            <ScoreRing score={route.loopScore} size={60} />
+          </InfoTooltip>
         </div>
 
         {/* Stats */}
@@ -154,7 +163,12 @@ export default function RouteDetailPage() {
       {/* Why runners like this route */}
       {route.tagSignals.length > 0 && (
         <section className="mt-6 px-4">
-          <h2 className="mb-3 text-lg font-bold">Why runners like this route</h2>
+          <h2 className="mb-3 flex items-center gap-1.5 text-lg font-bold">
+            Why runners like this route
+            <InfoTooltip text="Percent of raters who tagged this route with each vibe — e.g. 62% means 62% of people who reacted also picked 'Shaded' for this route.">
+              <Info className="h-4 w-4 text-loop-muted" />
+            </InfoTooltip>
+          </h2>
           <div className="space-y-2.5">
             {route.tagSignals.slice(0, 6).map(({ tag, pct }) => (
               <div key={tag.id} className="flex items-center gap-3">

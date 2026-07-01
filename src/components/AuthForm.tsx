@@ -10,6 +10,7 @@ export function AuthForm({ onDone }: { onDone?: () => void }) {
   const {
     signInWithPassword,
     signUpWithPassword,
+    confirmSignupCode,
     signInWithEmail,
     verifyEmailCode,
     signInAsGuest,
@@ -63,14 +64,39 @@ export function AuthForm({ onDone }: { onDone?: () => void }) {
     onDone?.();
   }
 
+  async function confirmSignup() {
+    setError("");
+    setBusy(true);
+    const { error } = await confirmSignupCode(email.trim(), code);
+    setBusy(false);
+    if (error) return setError(error);
+    onDone?.();
+  }
+
   if (phase === "confirm") {
     return (
       <div className="rounded-2xl border border-loop-green/40 bg-loop-green/10 p-5 text-center">
         <Check className="mx-auto mb-2 h-6 w-6 text-loop-green" />
         <p className="font-semibold">Confirm your email</p>
-        <p className="text-sm text-loop-muted">
-          We sent a confirmation link to {email}. Click it, then come back and sign in.
+        <p className="mb-3 text-sm text-loop-muted">
+          We sent a confirmation link and a code to {email}. Click the link, or
+          enter the code below:
         </p>
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          inputMode="numeric"
+          placeholder="123456"
+          className="w-full rounded-xl border border-loop-line bg-loop-panel2 p-3 text-center text-lg tracking-widest outline-none placeholder:text-loop-muted focus:border-loop-muted"
+        />
+        {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
+        <button
+          onClick={confirmSignup}
+          disabled={busy || code.length < 4}
+          className="mt-3 w-full rounded-xl bg-loop-green py-3 font-bold text-black disabled:opacity-60"
+        >
+          {busy ? "Verifying…" : "Verify code"}
+        </button>
       </div>
     );
   }

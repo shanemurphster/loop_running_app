@@ -86,12 +86,20 @@ interface StoreValue {
     email: string,
     password: string
   ) => Promise<{ error?: string; needsConfirm?: boolean }>;
+  confirmSignupCode: (
+    email: string,
+    code: string
+  ) => Promise<{ error?: string }>;
   signInWithPassword: (
     email: string,
     password: string
   ) => Promise<{ error?: string }>;
   signInAsGuest: () => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
+  // true once we know the signed-in user's account, false until they've ever
+  // set a password (accounts created/entered via email-code only)
+  passwordSet: boolean;
+  setPassword: (password: string) => Promise<{ error?: string }>;
   authPromptOpen: boolean;
   openAuthPrompt: () => void;
   closeAuthPrompt: () => void;
@@ -218,6 +226,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [passwordSet, setPasswordSet] = useState(true);
 
   // --- public (RLS anon) data ---
   const loadData = useCallback(async () => {
@@ -226,7 +235,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         supabase.from("routes_geojson").select(ROUTE_COLUMNS),
         supabase.from("reactions").select("*"),
         supabase.from("comparisons").select("*"),
-        supabase.from("profiles").select("*"),
+        // Explicit column list: password_set is per-account and shouldn't be
+        // broadcast in the world-readable profiles list (RLS allows it, but
+        // there's no reason to leak it — it's fetched for the own row below).
+        supabase
+          .from("profiles")
+          .select(
+            "id,username,name,city,avatar_color,avatar_url,bio,badges,unit_preference,strava_athlete_id,created_at"
+          ),
       ]);
     setRawRoutes((routesRes.data ?? []).map(mapRoute));
     setReactions((reactionsRes.data ?? []).map(mapReaction));
@@ -244,6 +260,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setSavedSet(new Set());
         setFollowingIds([]);
         setFollowerCount(0);
+        setPasswordSet(true);
         return;
       }
       const [prof, saved, following, followers] = await Promise.all([
@@ -259,6 +276,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setUnit(
         (prof.data?.unit_preference as string) === "km" ? "km" : "mi"
       );
+      setPasswordSet((prof.data?.password_set as boolean) ?? true);
       setSavedSet(new Set((saved.data ?? []).map((s) => s.route_id as string)));
       setFollowingIds(
         (following.data ?? []).map((f) => f.following_id as string)
@@ -352,6 +370,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (error) return { error: error.message };
       // No session => the project requires email confirmation.
       return { needsConfirm: !data.session };
+    },
+    [supabase]
+  );
+  // Verifies the 6-digit code from the "Confirm signup" email — the code
+  // alternative to clicking the confirmation link (same underlying token).
+  const confirmSignupCode = useCallback(
+    async (email: string, code: string) => {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: code.trim(),
+        type: "signup",
+      });
+      return { error: error?.message };
+    },
+    [supabase]
+  );
+  const setPassword = useCallback(
+    async (password: string) => {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) return { error: error.message };
+      setPasswordSet(true);
+      return {};
     },
     [supabase]
   );
@@ -519,7 +559,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       closeAuthPrompt: () => setAuthPromptOpen(false),
       verifyEmailCode,
       signUpWithPassword,
+      confirmSignupCode,
       signInWithPassword,
+      passwordSet,
+      setPassword,
       users: profiles,
       routes,
       getRoute: (id) => routeMap.get(id),
@@ -559,9 +602,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       savedSet,
       followingIds,
       followerCount,
+      passwordSet,
+      setPassword,
       signInWithEmail,
       verifyEmailCode,
       signUpWithPassword,
+      confirmSignupCode,
       signInWithPassword,
       signInAsGuest,
       signOut,
