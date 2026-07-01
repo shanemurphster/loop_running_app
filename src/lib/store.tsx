@@ -80,7 +80,16 @@ interface StoreValue {
   isGuest: boolean; // no session or anonymous session
   currentUser: User; // profile, or a guest placeholder
   unit: Unit;
-  signInWithEmail: (email: string) => Promise<{ error?: string }>;
+  signInWithEmail: (email: string) => Promise<{ error?: string }>; // magic link / OTP
+  verifyEmailCode: (email: string, code: string) => Promise<{ error?: string }>;
+  signUpWithPassword: (
+    email: string,
+    password: string
+  ) => Promise<{ error?: string; needsConfirm?: boolean }>;
+  signInWithPassword: (
+    email: string,
+    password: string
+  ) => Promise<{ error?: string }>;
   signInAsGuest: () => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   authPromptOpen: boolean;
@@ -326,6 +335,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [supabase]
   );
+  const verifyEmailCode = useCallback(
+    async (email: string, code: string) => {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: code.trim(),
+        type: "email",
+      });
+      return { error: error?.message };
+    },
+    [supabase]
+  );
+  const signUpWithPassword = useCallback(
+    async (email: string, password: string) => {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) return { error: error.message };
+      // No session => the project requires email confirmation.
+      return { needsConfirm: !data.session };
+    },
+    [supabase]
+  );
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error: error?.message };
+    },
+    [supabase]
+  );
   const signInAsGuest = useCallback(async () => {
     const { error } = await supabase.auth.signInAnonymously();
     if (!error) setAuthPromptOpen(false);
@@ -481,6 +517,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authPromptOpen,
       openAuthPrompt: () => setAuthPromptOpen(true),
       closeAuthPrompt: () => setAuthPromptOpen(false),
+      verifyEmailCode,
+      signUpWithPassword,
+      signInWithPassword,
       users: profiles,
       routes,
       getRoute: (id) => routeMap.get(id),
@@ -521,6 +560,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       followingIds,
       followerCount,
       signInWithEmail,
+      verifyEmailCode,
+      signUpWithPassword,
+      signInWithPassword,
       signInAsGuest,
       signOut,
       addReaction,

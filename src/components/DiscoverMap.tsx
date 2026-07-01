@@ -136,28 +136,43 @@ function MapboxMap({ routes, selectedId, onSelect, className }: Props) {
           },
         });
 
-        const pick = (e: import("mapbox-gl").MapMouseEvent) => {
-          const f = (e.features?.[0] as { properties?: { id?: string } } | undefined)
-            ?.properties;
-          if (f?.id) onSelectRef.current(String(f.id));
-        };
-        map.on("click", "routes-lines", pick);
-        map.on("click", "unclustered", pick);
-        map.on("click", "clusters", (e) => {
-          const feature = e.features?.[0] as
+        // Single click/tap handler that queries a PADDED box around the point,
+        // so imprecise touches near a thin line or small dot still register on
+        // mobile (per-layer click handlers only fire on a pixel-perfect hit).
+        map.on("click", (e) => {
+          const pad = 12;
+          const box: [[number, number], [number, number]] = [
+            [e.point.x - pad, e.point.y - pad],
+            [e.point.x + pad, e.point.y + pad],
+          ];
+          const feats = map.queryRenderedFeatures(box, {
+            layers: ["clusters", "unclustered", "routes-lines"],
+          });
+          if (!feats.length) return;
+
+          const cluster = feats.find((f) => f.layer?.id === "clusters") as
             | {
                 properties?: { cluster_id?: number };
-                geometry?: { coordinates: [number, number] };
+                geometry?: { coordinates?: [number, number] };
               }
             | undefined;
-          const clusterId = feature?.properties?.cluster_id;
-          const coords = feature?.geometry?.coordinates;
-          if (clusterId == null || !coords) return;
-          const src = map.getSource("routes-points") as import("mapbox-gl").GeoJSONSource;
-          src.getClusterExpansionZoom(clusterId, (err, zoom) => {
-            if (err || zoom == null) return;
-            map.easeTo({ center: coords, zoom });
-          });
+          if (cluster) {
+            const clusterId = cluster.properties?.cluster_id;
+            const coords = cluster.geometry?.coordinates;
+            if (clusterId == null || !coords) return;
+            const src = map.getSource("routes-points") as import("mapbox-gl").GeoJSONSource;
+            src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+              if (err || zoom == null) return;
+              map.easeTo({ center: coords, zoom });
+            });
+            return;
+          }
+
+          const routeFeat = feats.find(
+            (f) => f.layer?.id === "unclustered" || f.layer?.id === "routes-lines"
+          ) as { properties?: { id?: string } } | undefined;
+          const id = routeFeat?.properties?.id;
+          if (id) onSelectRef.current(String(id));
         });
         for (const layer of ["routes-lines", "unclustered", "clusters"]) {
           map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
