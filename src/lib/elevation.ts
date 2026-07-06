@@ -6,6 +6,16 @@ import type { LngLat } from "./types";
 //
 // Best-effort: any failure returns 0 (flatness, the user-picked descriptor, is
 // the primary vertical signal). Resolution is ~90 m (SRTM), so treat as "≈".
+/** Total ascent from a sequence of elevation samples (sums positive deltas). */
+export function sumPositiveGain(elevations: number[]): number {
+  let gain = 0;
+  for (let i = 1; i < elevations.length; i++) {
+    const d = elevations[i] - elevations[i - 1];
+    if (d > 0) gain += d;
+  }
+  return gain;
+}
+
 export async function elevationGainMeters(path: LngLat[]): Promise<number> {
   if (path.length < 2) return 0;
 
@@ -24,12 +34,7 @@ export async function elevationGainMeters(path: LngLat[]): Promise<number> {
     const data = await res.json();
     const elev: number[] | undefined = data?.elevation;
     if (!Array.isArray(elev) || elev.length < 2) return 0;
-    let gain = 0;
-    for (let i = 1; i < elev.length; i++) {
-      const d = elev[i] - elev[i - 1];
-      if (d > 0) gain += d;
-    }
-    return gain;
+    return sumPositiveGain(elev);
   } catch {
     return 0;
   }

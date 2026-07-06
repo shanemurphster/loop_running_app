@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, MapPin } from "lucide-react";
@@ -21,13 +21,19 @@ import type { LngLat } from "@/lib/types";
 
 export default function AddRoutePage() {
   const router = useRouter();
-  const { addRoute, currentUser, unit, isGuest, openAuthPrompt } = useStore();
+  const { addRoute, currentUser, unit, isGuest, openAuthPrompt, pendingImport, setPendingImport } =
+    useStore();
 
   const [step, setStep] = useState<"draw" | "details">("draw");
   const [path, setPath] = useState<LngLat[]>([]);
   const [distanceM, setDistanceM] = useState(0);
   const [elevationM, setElevationM] = useState(0);
   const [elevLoading, setElevLoading] = useState(false);
+  // Set when "details" was reached via a Strava/GPX import rather than
+  // drawing — changes the back button's destination and skips one re-fetch
+  // of elevation (the import already supplied a real value).
+  const [importedFrom, setImportedFrom] = useState<"strava" | "gpx" | null>(null);
+  const skipNextElevationFetchRef = useRef(false);
 
   const [name, setName] = useState("");
   const [city, setCity] = useState(currentUser.city || "");
@@ -39,6 +45,20 @@ export default function AddRoutePage() {
 
   const canContinue = path.length >= 2 && distanceM > 0;
   const canPublish = canContinue && name.trim().length > 1 && !saving;
+
+  // Consume a pending Strava/GPX import (staged by /add/import) once, then
+  // jump straight to the details step with a read-only preview.
+  useEffect(() => {
+    if (!pendingImport) return;
+    setPath(pendingImport.path);
+    setDistanceM(pendingImport.distanceM);
+    setElevationM(pendingImport.elevationM);
+    skipNextElevationFetchRef.current = true;
+    if (pendingImport.suggestedName) setName(pendingImport.suggestedName);
+    setImportedFrom(pendingImport.source);
+    setStep("details");
+    setPendingImport(null);
+  }, [pendingImport, setPendingImport]);
 
   // Reverse-geocode the start point to prefill the city (editable).
   useEffect(() => {
@@ -55,9 +75,14 @@ export default function AddRoutePage() {
       .catch(() => {});
   }, [step, city, path]);
 
-  // Pull a real elevation profile for the drawn line (best-effort).
+  // Pull a real elevation profile for the drawn line (best-effort). Skipped
+  // once right after an import, which already supplied a real elevation.
   useEffect(() => {
     if (step !== "details" || path.length < 2) return;
+    if (skipNextElevationFetchRef.current) {
+      skipNextElevationFetchRef.current = false;
+      return;
+    }
     let cancelled = false;
     setElevLoading(true);
     elevationGainMeters(path).then((m) => {
@@ -101,7 +126,13 @@ export default function AddRoutePage() {
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center gap-3 px-4 pb-2 pt-5">
         <button
-          onClick={() => (step === "details" ? setStep("draw") : router.back())}
+          onClick={() => {
+            if (step !== "details") return router.back();
+            // Nothing was drawn to go back to for an imported route — return
+            // to the picker/upload screen it came from instead.
+            if (importedFrom) router.push("/add/import");
+            else setStep("draw");
+          }}
           className="grid h-9 w-9 place-items-center rounded-full bg-loop-panel"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -146,10 +177,17 @@ export default function AddRoutePage() {
               Next
             </button>
           </div>
-          <div className="px-4 pb-6 pt-4 text-center">
-            <Link href="/add/discover" className="text-xs text-loop-muted underline">
-              Or discover routes from runs
-            </Link>
+          <div className="space-y-1.5 px-4 pb-6 pt-4 text-center">
+            <p>
+              <Link href="/add/import" className="text-xs text-loop-muted underline">
+                Or import a real run
+              </Link>
+            </p>
+            <p>
+              <Link href="/add/discover" className="text-xs text-loop-muted underline">
+                Or discover routes from runs
+              </Link>
+            </p>
           </div>
         </>
       ) : (

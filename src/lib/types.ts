@@ -99,3 +99,15 @@ export interface RouteWithStats extends Route {
   ratingCount: number;
   tagSignals: { tag: TagDef; pct: number }[];
 }
+
+/**
+ * A route imported from Strava or a GPX file, staged in the store so /add can
+ * pick it up and jump straight to the details step (see /add/import).
+ */
+export interface PendingImport {
+  path: LngLat[];
+  distanceM: number;
+  elevationM: number;
+  suggestedName?: string;
+  source: "strava" | "gpx";
+}

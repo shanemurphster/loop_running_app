@@ -32,6 +32,7 @@ import type {
   Comparison,
   ComparisonWinner,
   LngLat,
+  PendingImport,
   Reaction,
   ReactionKind,
   Route,
@@ -103,6 +104,9 @@ interface StoreValue {
   authPromptOpen: boolean;
   openAuthPrompt: () => void;
   closeAuthPrompt: () => void;
+  // Staged Strava/GPX import — set by /add/import, consumed once by /add.
+  pendingImport: PendingImport | null;
+  setPendingImport: (imp: PendingImport | null) => void;
   // data
   users: User[];
   routes: RouteWithStats[];
@@ -227,6 +231,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [followerCount, setFollowerCount] = useState(0);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [passwordSet, setPasswordSet] = useState(true);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
 
   // --- public (RLS anon) data ---
   const loadData = useCallback(async () => {
@@ -557,6 +562,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authPromptOpen,
       openAuthPrompt: () => setAuthPromptOpen(true),
       closeAuthPrompt: () => setAuthPromptOpen(false),
+      pendingImport,
+      setPendingImport,
       verifyEmailCode,
       signUpWithPassword,
       confirmSignupCode,
@@ -594,6 +601,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       currentUser,
       unit,
       authPromptOpen,
+      pendingImport,
       profiles,
       routes,
       routeMap,

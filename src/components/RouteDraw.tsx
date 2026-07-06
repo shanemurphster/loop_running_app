@@ -9,6 +9,22 @@ import type { LngLat } from "@/lib/types";
 
 type Mode = "roads" | "straight";
 type Drag = { index: number; points: LngLat[] };
+// The installed mapbox-gl types expose queried features as a bare
+// `GeoJSONFeature` without `geometry`/`properties` — cast once at the query
+// site to the shape we actually get back at runtime (our own point/line
+// layers, so we know exactly what's on them).
+type QueriedFeature = {
+  properties: Record<string, unknown>;
+  geometry: { coordinates: [number, number] };
+};
+
+function queryFeatures(
+  map: import("mapbox-gl").Map,
+  geometry: import("mapbox-gl").PointLike | [import("mapbox-gl").PointLike, import("mapbox-gl").PointLike],
+  layers: string[]
+): QueriedFeature[] {
+  return map.queryRenderedFeatures(geometry, { layers }) as unknown as QueriedFeature[];
+}
 
 // OnTheGoMap-style route drawing. Tap to drop waypoints; the line either snaps
 // to real roads/paths (Mapbox Directions, walking) or connects straight. The
@@ -136,12 +152,11 @@ export function RouteDraw({
             [e.point.x - tolerance, e.point.y - tolerance],
             [e.point.x + tolerance, e.point.y + tolerance],
           ];
-          const pointFeats = map.queryRenderedFeatures(bbox, { layers: ["draw-points"] });
+          const pointFeats = queryFeatures(map, bbox, ["draw-points"]);
           const pointFeat = pointFeats.length
             ? pointFeats.reduce((closest, f) => {
-                const dist = (feat: typeof f) => {
-                  const c = (feat.geometry as GeoJSON.Point).coordinates as [number, number];
-                  const p = map.project(c);
+                const dist = (feat: QueriedFeature) => {
+                  const p = map.project(feat.geometry.coordinates);
                   return Math.hypot(p.x - e.point.x, p.y - e.point.y);
                 };
                 return dist(f) < dist(closest) ? f : closest;
@@ -149,7 +164,7 @@ export function RouteDraw({
             : null;
           const lineFeat = pointFeat
             ? null
-            : map.queryRenderedFeatures(e.point, { layers: ["draw-line-hit"] })[0];
+            : queryFeatures(map, e.point, ["draw-line-hit"])[0];
           if (!pointFeat && !lineFeat) return; // let the normal "tap to append" click through
 
           e.preventDefault();
@@ -160,7 +175,7 @@ export function RouteDraw({
           const points = [...waypointsRef.current];
           let index: number;
           if (pointFeat) {
-            index = pointFeat.properties!.index as number;
+            index = pointFeat.properties.index as number;
           } else {
             if (modeRef.current === "roads" && points.length >= MAX_WAYPOINTS) {
               map.dragPan.enable();
