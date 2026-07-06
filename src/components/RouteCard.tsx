@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { MapPin, TrendingUp, BadgeCheck } from "lucide-react";
 import clsx from "clsx";
@@ -10,6 +9,7 @@ import { formatDistance, formatElevation } from "@/lib/units";
 import { ScoreRing } from "./ScoreRing";
 import { RouteTypeBadge } from "./RouteTypeBadge";
 import { SaveButton } from "./SaveButton";
+import { RouteThumb } from "./RouteThumb";
 
 // The feed card from the mockup: photo, type badge, save + score, then a
 // detail strip. `variant="wide"` is the larger Discover hero; "rail" is the
@@ -31,12 +31,11 @@ export function RouteCard({
       )}
     >
       <div className="relative h-44 w-full">
-        <Image
-          src={route.image}
+        <RouteThumb
+          image={route.image}
+          path={route.path}
           alt={route.name}
-          fill
           sizes="(max-width: 480px) 100vw, 480px"
-          className="object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/30" />
 

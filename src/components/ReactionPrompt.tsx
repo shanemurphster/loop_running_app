@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { X, ImagePlus, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import { useStore } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 import { NEGATIVE_TAGS, POSITIVE_TAGS } from "@/lib/tags";
 import type { ReactionKind } from "@/lib/types";
+
+const MAX_PHOTOS = 6;
 
 const REACTIONS: { kind: ReactionKind; emoji: string; label: string }[] = [
   { kind: "like", emoji: "👍", label: "Loved it" },
@@ -24,10 +27,15 @@ export function ReactionPrompt({
   routeName: string;
   onClose: () => void;
 }) {
-  const { addReaction } = useStore();
+  const { addReaction, user } = useStore();
+  const supabase = useMemo(() => createClient(), []);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [reaction, setReaction] = useState<ReactionKind | null>(null);
   const [tags, setTags] = useState<Set<string>>(new Set());
   const [text, setText] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [photoError, setPhotoError] = useState("");
 
   const tagPool = reaction === "dislike" ? NEGATIVE_TAGS : POSITIVE_TAGS;
 
@@ -39,9 +47,47 @@ export function ReactionPrompt({
     });
   }
 
+  async function onPickPhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (fileRef.current) fileRef.current.value = "";
+    if (!files.length || !user) return;
+
+    setPhotoError("");
+    const room = MAX_PHOTOS - photos.length;
+    if (files.length > room) {
+      setPhotoError(`Up to ${MAX_PHOTOS} photos per review.`);
+    }
+    const toUpload = files.slice(0, room);
+    if (!toUpload.length) return;
+
+    setUploading(true);
+    const uploaded: string[] = [];
+    for (const file of toUpload) {
+      if (file.size > 10 * 1024 * 1024) {
+        setPhotoError("Skipped a photo over 10MB.");
+        continue;
+      }
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${user.id}/${routeId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage
+        .from("route-photos")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (!error) {
+        const { data } = supabase.storage.from("route-photos").getPublicUrl(path);
+        uploaded.push(data.publicUrl);
+      }
+    }
+    setPhotos((prev) => [...prev, ...uploaded]);
+    setUploading(false);
+  }
+
+  function removePhoto(url: string) {
+    setPhotos((prev) => prev.filter((p) => p !== url));
+  }
+
   function submit() {
     if (!reaction) return;
-    addReaction({ routeId, reaction, tags: [...tags], text: text.trim() });
+    addReaction({ routeId, reaction, tags: [...tags], text: text.trim(), photos });
     onClose();
   }
 
@@ -114,9 +160,52 @@ export function ReactionPrompt({
               className="mt-4 w-full resize-none rounded-xl border border-loop-line bg-loop-panel2 p-3 text-sm outline-none placeholder:text-loop-muted focus:border-loop-muted"
             />
 
+            <div className="mt-3 flex flex-wrap gap-2">
+              {photos.map((url) => (
+                <div key={url} className="relative h-16 w-16 shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt=""
+                    className="h-16 w-16 rounded-lg object-cover"
+                  />
+                  <button
+                    onClick={() => removePhoto(url)}
+                    aria-label="Remove photo"
+                    className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-black/80 text-white"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {photos.length < MAX_PHOTOS && (
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-dashed border-loop-line text-loop-muted disabled:opacity-60"
+                >
+                  {uploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-5 w-5" />
+                  )}
+                </button>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={onPickPhotos}
+              />
+            </div>
+            {photoError && <p className="mt-1.5 text-xs text-rose-400">{photoError}</p>}
+
             <button
               onClick={submit}
-              className="mt-3 w-full rounded-xl bg-loop-green py-3 font-bold text-black transition active:scale-[0.98]"
+              disabled={uploading}
+              className="mt-3 w-full rounded-xl bg-loop-green py-3 font-bold text-black transition active:scale-[0.98] disabled:opacity-60"
             >
               Post reaction
             </button>

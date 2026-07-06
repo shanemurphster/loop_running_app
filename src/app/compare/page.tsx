@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { formatDistance, formatElevation } from "@/lib/units";
 import { RouteTypeBadge } from "@/components/RouteTypeBadge";
+import { RouteThumb } from "@/components/RouteThumb";
 import type { ComparisonWinner, RouteWithStats } from "@/lib/types";
 
 // "Which run would you rather do?" — builds the preference graph one tap at a
@@ -114,12 +114,12 @@ function CompareCard({
       onClick={onClick}
       className="group relative flex-1 overflow-hidden rounded-2xl ring-1 ring-loop-line transition active:scale-[0.99]"
     >
-      <Image
-        src={route.image}
+      <RouteThumb
+        image={route.image}
+        path={route.path}
         alt={route.name}
-        fill
         sizes="(max-width: 480px) 100vw, 480px"
-        className="object-cover transition group-active:scale-105"
+        imageClassName="object-cover transition group-active:scale-105"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/40" />
       <div className="absolute left-3 top-3">

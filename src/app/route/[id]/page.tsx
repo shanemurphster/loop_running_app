@@ -36,6 +36,7 @@ export default function RouteDetailPage() {
   const { getRoute, getUser, reactionsFor, unit, isGuest, openAuthPrompt } =
     useStore();
   const [showReaction, setShowReaction] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const route = getRoute(id);
   if (!route) {
@@ -51,6 +52,7 @@ export default function RouteDetailPage() {
 
   const creator = getUser(route.creatorId);
   const reactions = reactionsFor(route.id);
+  const allPhotos = reactions.flatMap((r) => r.photos ?? []);
 
   return (
     <div>
@@ -194,6 +196,31 @@ export default function RouteDetailPage() {
         </section>
       )}
 
+      {/* Photos — from everyone who's reviewed this route */}
+      {allPhotos.length > 0 && (
+        <section className="mt-6">
+          <h2 className="mb-3 px-4 text-lg font-bold">
+            Photos <span className="text-loop-muted">({allPhotos.length})</span>
+          </h2>
+          <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1">
+            {allPhotos.map((url, i) => (
+              <button
+                key={url + i}
+                onClick={() => setLightbox(url)}
+                className="relative h-24 w-24 shrink-0"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt=""
+                  className="h-24 w-24 rounded-xl object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Reviews */}
       <section className="mt-6 px-4">
         <h2 className="mb-3 text-lg font-bold">
@@ -241,6 +268,24 @@ export default function RouteDetailPage() {
                 {r.text && (
                   <p className="mt-2 text-sm text-zinc-300">{r.text}</p>
                 )}
+                {r.photos && r.photos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {r.photos.map((url) => (
+                      <button
+                        key={url}
+                        onClick={() => setLightbox(url)}
+                        className="relative h-14 w-14 shrink-0"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt=""
+                          className="h-14 w-14 rounded-lg object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -263,6 +308,21 @@ export default function RouteDetailPage() {
           routeName={route.name}
           onClose={() => setShowReaction(false)}
         />
+      )}
+
+      {lightbox && (
+        <button
+          onClick={() => setLightbox(null)}
+          aria-label="Close photo"
+          className="fixed inset-0 z-[70] grid place-items-center bg-black/90 p-4 animate-fade-in"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt=""
+            className="max-h-full max-w-full rounded-xl object-contain"
+          />
+        </button>
       )}
     </div>
   );

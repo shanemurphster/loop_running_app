@@ -40,9 +40,6 @@ import type {
   User,
 } from "./types";
 
-const DEFAULT_IMG =
-  "https://images.unsplash.com/photo-1502904550040-7534597429ae?w=800&q=70";
-
 const GUEST_USER: User = {
   id: "guest",
   username: "guest",
@@ -123,6 +120,7 @@ interface StoreValue {
     reaction: ReactionKind;
     tags?: string[];
     text?: string;
+    photos?: string[];
   }) => Promise<void>;
   addComparison: (
     routeAId: string,
@@ -178,7 +176,7 @@ function mapRoute(r: Record<string, unknown>): Route {
     distanceMi: metersToMiles((r.distance_m as number) ?? 0),
     elevationFt: metersToFeet((r.elevation_m as number) ?? 0),
     path: parseLineString(r.geom_geojson),
-    image: (r.image as string) ?? DEFAULT_IMG,
+    image: (r.image as string | null) ?? undefined,
     createdAt: r.created_at as string,
     loopCertified: (r.loop_certified as boolean) ?? false,
     runCount: (r.run_count as number) ?? 0,
@@ -438,6 +436,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           reaction: input.reaction,
           tags: input.tags ?? [],
           text: input.text ?? "",
+          photos: input.photos ?? [],
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id,route_id" }

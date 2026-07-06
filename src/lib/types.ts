@@ -77,7 +77,8 @@ export interface Route {
   elevationFt: number;
   /** Loop geometry as [lng, lat] points. Used by both Mapbox and SVG fallback. */
   path: LngLat[];
-  image: string;
+  /** A real uploaded photo, if any — routes without one show a path outline instead. */
+  image?: string;
   createdAt: string;
   /** Auto-promoted from real run traces once popular enough. */
   loopCertified?: boolean;
